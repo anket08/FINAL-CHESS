@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can read and write their own user document
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Games can be read by participants, written by participants for moves
+    match /games/{gameId} {
+      allow read: if request.auth != null && 
+        (request.auth.uid in resource.data.playersUids || 
+         request.auth.uid in get(/databases/$(database)/documents/games/$(gameId)).data.playersUids);
+      
+      allow create: if request.auth != null && 
+        request.auth.uid in request.resource.data.playersUids;
+      
+      allow update: if request.auth != null && 
+        request.auth.uid in resource.data.playersUids &&
+        // Only allow updating moves, status, result, endedAt, currentPlayer
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['moves', 'status', 'result', 'endedAt', 'currentPlayer']);
+    }
+    
+    // Rooms for matchmaking
+    match /rooms/{roomId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Batches can only be read/written by the owner
+    match /batches/{batchId} {
+      allow read, write: if request.auth != null && 
+        request.auth.uid == resource.data.ownerUid;
+    }
+  }
+}
